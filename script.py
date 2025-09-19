@@ -90,8 +90,55 @@ Generate a SQL query that answers the user's question. Use absolute dates in YYY
         print(f"Error generating SQL query: {e}")
         sys.exit(1)
 
+def generate_summary(query_results, user_query, anthropic_client):
+    """Generate a summary of the query results using Claude."""
+    
+    # Format the results for the LLM
+    if not query_results.get('rows'):
+        return "No data found matching the query."
+    
+    rows = query_results.get('rows', [])
+    columns = query_results.get('columns', [])
+    
+    # Create a formatted representation of the data
+    data_summary = f"Query returned {len(rows)} rows with columns: {', '.join(columns)}\n\n"
+    
+    # Add all rows to the data summary
+    for i, row in enumerate(rows, 1):
+        data_summary += f"Row {i}: {row}\n"
+    
+    prompt = f"""You are a data analyst. Given the results of a database query, provide a succinct summary as bullet points.
+
+Original user query: {user_query}
+
+Query results:
+{data_summary}
+
+Format each row as a bullet point in this exact format:
+• day date road team @ home team
+
+For example:
+• Friday 2024-04-05 Hartford @ Portland
+• Friday 2024-04-05 New Hampshire @ Binghamton
+
+Extract the day, date, road_team, and home_team from each row. Only return the bullet points, no explanations or other text."""
+
+    try:
+        response = anthropic_client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=2000,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        summary = response.content[0].text.strip()
+        return summary
+        
+    except Exception as e:
+        print(f"Error generating summary: {e}")
+        return "Unable to generate summary due to an error."
+
 def execute_sql_query(sql_query, owner, repo):
-    """Execute SQL query against DoltHub repository."""
+    """Execute SQL query against DoltHub repository and return results."""
     
     # Construct the API URL
     api_url = f'https://www.dolthub.com/api/v1alpha1/{owner}/{repo}/main'
@@ -112,9 +159,9 @@ def execute_sql_query(sql_query, owner, repo):
             # Check for query execution errors
             if data.get('query_execution_status') == 'Error':
                 print(f"SQL Error: {data.get('query_execution_message', 'Unknown error')}")
-                return False
+                return None
             
-            # Extract and print the rows
+            # Extract the rows and columns
             rows = data.get('rows', [])
             columns = data.get('columns', [])
             
@@ -132,24 +179,25 @@ def execute_sql_query(sql_query, owner, repo):
                     print(f"Row {i}: {row}")
             else:
                 print("No data found matching the query.")
+            
+            # Return the data for summary generation
+            return data
                 
         else:
             print(f'Error: HTTP {response.status_code}')
             print(f'Response: {response.text}')
-            return False
+            return None
             
     except requests.exceptions.RequestException as e:
         print(f'Network error: {e}')
-        return False
+        return None
     except json.JSONDecodeError as e:
         print(f'JSON parsing error: {e}')
         print(f'Raw response: {response.text}')
-        return False
+        return None
     except Exception as e:
         print(f'Unexpected error: {e}')
-        return False
-    
-    return True
+        return None
 
 def main():
     # Load environment variables
@@ -183,10 +231,19 @@ def main():
     sql_query = generate_sql_query(args.query, anthropic_client)
     
     # Execute the SQL query
-    success = execute_sql_query(sql_query, owner, repo)
+    query_results = execute_sql_query(sql_query, owner, repo)
     
-    if not success:
+    if query_results is None:
         sys.exit(1)
+    
+    # Generate and display summary
+    print("\n" + "=" * 60)
+    print("SUMMARY")
+    print("=" * 60)
+    print("Generating summary...")
+    
+    summary = generate_summary(query_results, args.query, anthropic_client)
+    print(summary)
 
 if __name__ == "__main__":
     main()
