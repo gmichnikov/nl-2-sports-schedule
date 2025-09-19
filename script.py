@@ -137,6 +137,396 @@ Extract the day, date, road_team, and home_team from each row. Only return the b
         print(f"Error generating summary: {e}")
         return "Unable to generate summary due to an error."
 
+# ============================================================================
+# TOOL DEFINITIONS FOR AGENTIC APPROACH
+# ============================================================================
+
+def analyze_question_tool(user_query, context, anthropic_client):
+    """Tool: Analyze what the user wants to know and suggest next steps."""
+    
+    context_str = ""
+    if context.get('results'):
+        context_str = f"\nPrevious results: {len(context['results'])} queries executed so far."
+    
+    prompt = f"""You are a data analyst. Analyze this user query and suggest what information we need to gather.
+
+User query: {user_query}
+{context_str}
+
+Based on the query, what specific information do we need to find? Be specific about what data points are required.
+
+Respond with a JSON object like:
+{{
+    "analysis": "Brief description of what the user wants",
+    "data_needed": ["specific data point 1", "specific data point 2"],
+    "suggested_approach": "How to approach this query"
+}}"""
+
+    try:
+        response = anthropic_client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=500,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        result = response.content[0].text.strip()
+        return {"tool": "analyze_question", "result": result}
+        
+    except Exception as e:
+        return {"tool": "analyze_question", "error": str(e)}
+
+def execute_sql_tool(sql_query, owner, repo):
+    """Tool: Execute SQL query and return results."""
+    
+    # Use existing execute_sql_query function but return structured data
+    api_url = f'https://www.dolthub.com/api/v1alpha1/{owner}/{repo}/main'
+    
+    try:
+        response = requests.get(api_url, params={'q': sql_query})
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            if data.get('query_execution_status') == 'Error':
+                return {"tool": "execute_sql", "error": data.get('query_execution_message', 'Unknown error')}
+            
+            rows = data.get('rows', [])
+            columns = data.get('columns', [])
+            
+            return {
+                "tool": "execute_sql", 
+                "sql": sql_query,
+                "rows": rows,
+                "columns": columns,
+                "row_count": len(rows)
+            }
+        else:
+            return {"tool": "execute_sql", "error": f"HTTP {response.status_code}: {response.text}"}
+            
+    except Exception as e:
+        return {"tool": "execute_sql", "error": str(e)}
+
+def summarize_data_tool(data, anthropic_client):
+    """Tool: Summarize data in bullet point format."""
+    
+    if not data.get('rows'):
+        return {"tool": "summarize_data", "result": "No data to summarize"}
+    
+    rows = data.get('rows', [])
+    columns = data.get('columns', [])
+    
+    # Create data summary for LLM
+    data_summary = f"Query returned {len(rows)} rows with columns: {', '.join(columns)}\n\n"
+    for i, row in enumerate(rows, 1):
+        data_summary += f"Row {i}: {row}\n"
+    
+    prompt = f"""Format each row as a bullet point in this exact format:
+• day date road team @ home team
+
+Data:
+{data_summary}
+
+Extract the day, date, road_team, and home_team from each row. Only return the bullet points, no explanations."""
+
+    try:
+        response = anthropic_client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=2000,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        summary = response.content[0].text.strip()
+        return {"tool": "summarize_data", "result": summary}
+        
+    except Exception as e:
+        return {"tool": "summarize_data", "error": str(e)}
+
+def compare_data_tool(data1, data2, comparison_type, anthropic_client):
+    """Tool: Compare two datasets."""
+    
+    prompt = f"""Compare these two datasets and provide insights.
+
+Dataset 1: {data1.get('row_count', 0)} rows
+Dataset 2: {data2.get('row_count', 0)} rows
+
+Comparison type: {comparison_type}
+
+Provide a brief comparison highlighting key differences or similarities."""
+
+    try:
+        response = anthropic_client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=500,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        comparison = response.content[0].text.strip()
+        return {"tool": "compare_data", "result": comparison}
+        
+    except Exception as e:
+        return {"tool": "compare_data", "error": str(e)}
+
+# Tool registry
+AVAILABLE_TOOLS = {
+    "analyze_question": analyze_question_tool,
+    "execute_sql": execute_sql_tool,
+    "summarize_data": summarize_data_tool,
+    "compare_data": compare_data_tool
+}
+
+def agent_think(user_query, context, anthropic_client):
+    """Agent decision engine: decides which tool to use next."""
+    
+    # Build context summary
+    context_summary = f"Step {context.get('step', 0)}: "
+    if context.get('results'):
+        context_summary += f"Executed {len(context['results'])} tools so far. "
+        recent_results = context['results'][-2:]  # Last 2 results
+        for result in recent_results:
+            if 'error' in result:
+                context_summary += f"Last tool ({result['tool']}) had error: {result['error']}. "
+            else:
+                context_summary += f"Last tool ({result['tool']}) succeeded. "
+    else:
+        context_summary += "Starting fresh. "
+    
+    # Available tools description
+    tools_desc = """
+Available tools:
+- analyze_question: Analyze what the user wants to know
+- execute_sql: Run SQL queries against the database
+- summarize_data: Create bullet point summaries of data
+- compare_data: Compare two datasets
+"""
+    
+    prompt = f"""You are an AI agent that helps users query sports schedule data. 
+
+User query: {user_query}
+
+{context_summary}
+
+{tools_desc}
+
+Based on the user query and current context, decide what to do next. 
+
+Respond with a JSON object like:
+{{
+    "tool": "tool_name",
+    "reasoning": "Why I'm choosing this tool",
+    "params": {{
+        "param1": "value1",
+        "param2": "value2"
+    }}
+}}
+
+If the task seems complete, respond with:
+{{
+    "tool": "done",
+    "reasoning": "Task is complete",
+    "params": {{}}
+}}"""
+
+    try:
+        response = anthropic_client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=500,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        result = response.content[0].text.strip()
+        
+        # Try to parse JSON response
+        try:
+            import json
+            # Clean up the response to extract JSON
+            if "```json" in result:
+                result = result.split("```json")[1].split("```")[0].strip()
+            elif "```" in result:
+                result = result.split("```")[1].split("```")[0].strip()
+            
+            decision = json.loads(result)
+            return decision
+        except json.JSONDecodeError as e:
+            # Fallback if JSON parsing fails - try to extract tool name from text
+            if "summarize_data" in result.lower():
+                return {
+                    "tool": "summarize_data",
+                    "reasoning": "Detected summarize_data from text",
+                    "params": {}
+                }
+            elif "execute_sql" in result.lower():
+                return {
+                    "tool": "execute_sql", 
+                    "reasoning": "Detected execute_sql from text",
+                    "params": {}
+                }
+            elif "done" in result.lower() or "complete" in result.lower():
+                return {
+                    "tool": "done",
+                    "reasoning": "Detected completion from text", 
+                    "params": {}
+                }
+            else:
+                return {
+                    "tool": "summarize_data",
+                    "reasoning": f"Failed to parse JSON, defaulting to summarize_data. Error: {str(e)}",
+                    "params": {}
+                }
+        
+    except Exception as e:
+        return {
+            "tool": "analyze_question", 
+            "reasoning": f"Error in agent_think: {str(e)}",
+            "params": {}
+        }
+
+def execute_tool_decision(decision, context, owner, repo, anthropic_client):
+    """Execute a tool based on agent decision."""
+    
+    tool_name = decision.get("tool")
+    params = decision.get("params", {})
+    
+    if tool_name == "done":
+        return {"tool": "done", "result": "Task completed"}
+    
+    if tool_name not in AVAILABLE_TOOLS:
+        return {"tool": tool_name, "error": f"Unknown tool: {tool_name}"}
+    
+    tool_func = AVAILABLE_TOOLS[tool_name]
+    
+    try:
+        if tool_name == "analyze_question":
+            return tool_func(context.get("original_query", ""), context, anthropic_client)
+        elif tool_name == "execute_sql":
+            # Generate SQL query first if not provided
+            if "sql_query" not in params:
+                user_query = context.get("original_query", "")
+                sql_query = generate_sql_query(user_query, anthropic_client)
+                print(f"🔍 Generated SQL: {sql_query}")
+            else:
+                sql_query = params.get("sql_query", "")
+            return tool_func(sql_query, owner, repo)
+        elif tool_name == "summarize_data":
+            # Get the most recent SQL result if no data provided
+            if "data" not in params:
+                sql_results = [r for r in context["results"] if r["tool"] == "execute_sql" and "rows" in r]
+                if sql_results:
+                    data = sql_results[-1]  # Use most recent SQL result
+                else:
+                    data = {}
+            else:
+                data = params.get("data", {})
+            return tool_func(data, anthropic_client)
+        elif tool_name == "compare_data":
+            data1 = params.get("data1", {})
+            data2 = params.get("data2", {})
+            comparison_type = params.get("comparison_type", "general")
+            return tool_func(data1, data2, comparison_type, anthropic_client)
+        else:
+            return {"tool": tool_name, "error": f"No handler for tool: {tool_name}"}
+            
+    except Exception as e:
+        return {"tool": tool_name, "error": str(e)}
+
+def agent_loop(user_query, owner, repo, anthropic_client):
+    """Main agent loop that keeps running until task is complete."""
+    
+    context = {
+        "original_query": user_query,
+        "step": 0,
+        "results": [],
+        "data_cache": {}  # Store data for potential reuse
+    }
+    
+    max_steps = 10  # Prevent infinite loops
+    print(f"🤖 Agent starting with query: {user_query}")
+    print("=" * 60)
+    
+    while context["step"] < max_steps:
+        context["step"] += 1
+        print(f"\n🔄 Step {context['step']}: Thinking...")
+        
+        # Agent decides what to do next
+        decision = agent_think(user_query, context, anthropic_client)
+        print(f"💭 Decision: {decision.get('reasoning', 'No reasoning provided')}")
+        
+        # Check if task is complete
+        if decision.get("tool") == "done":
+            print("✅ Task completed!")
+            break
+        
+        # Execute the tool
+        print(f"🔧 Executing tool: {decision.get('tool')}")
+        result = execute_tool_decision(decision, context, owner, repo, anthropic_client)
+        
+        # Store result
+        context["results"].append(result)
+        
+        # Handle errors
+        if "error" in result:
+            print(f"❌ Error: {result['error']}")
+            if context["step"] >= 3:  # Stop after 3 errors
+                print("🛑 Too many errors, stopping.")
+                break
+        else:
+            print(f"✅ Tool {result['tool']} completed successfully")
+            
+            # Display tool results
+            if result["tool"] == "analyze_question":
+                print(f"📋 Analysis: {result.get('result', 'No analysis provided')}")
+            elif result["tool"] == "execute_sql":
+                rows = result.get('rows', [])
+                columns = result.get('columns', [])
+                print(f"📊 Query returned {len(rows)} rows")
+                if rows:
+                    print("Columns:", " | ".join(columns))
+                    print("-" * 50)
+                    for i, row in enumerate(rows[:5], 1):  # Show first 5 rows
+                        print(f"Row {i}: {row}")
+                    if len(rows) > 5:
+                        print(f"... and {len(rows) - 5} more rows")
+            elif result["tool"] == "summarize_data":
+                print(f"📝 Summary: {result.get('result', 'No summary provided')}")
+            elif result["tool"] == "compare_data":
+                print(f"⚖️ Comparison: {result.get('result', 'No comparison provided')}")
+            
+            # Cache data for potential reuse
+            if result["tool"] == "execute_sql" and "rows" in result:
+                context["data_cache"][f"query_{len(context['results'])}"] = result
+    
+    # Generate final summary
+    print("\n" + "=" * 60)
+    print("📊 FINAL SUMMARY")
+    print("=" * 60)
+    
+    # Find all successful SQL results
+    sql_results = [r for r in context["results"] if r["tool"] == "execute_sql" and "rows" in r]
+    
+    if sql_results:
+        # Combine all SQL results
+        all_rows = []
+        all_columns = []
+        for result in sql_results:
+            all_rows.extend(result.get("rows", []))
+            if not all_columns and result.get("columns"):
+                all_columns = result["columns"]
+        
+        combined_data = {
+            "rows": all_rows,
+            "columns": all_columns
+        }
+        
+        # Generate summary
+        summary_result = summarize_data_tool(combined_data, anthropic_client)
+        if "result" in summary_result:
+            print(summary_result["result"])
+        else:
+            print("Unable to generate summary")
+    else:
+        print("No data found to summarize")
+    
+    return context
+
 def execute_sql_query(sql_query, owner, repo):
     """Execute SQL query against DoltHub repository and return results."""
     
@@ -208,6 +598,8 @@ def main():
     parser.add_argument('query', nargs='?', default='Show me the first 4 games', 
                        help='Natural language query (default: "Show me the first 4 games")')
     parser.add_argument('--api-key', help='Anthropic API key (overrides .env file)')
+    parser.add_argument('--agent', action='store_true', 
+                       help='Use agentic approach (multiple queries, adaptive planning)')
     
     args = parser.parse_args()
     
@@ -225,25 +617,29 @@ def main():
     owner = 'gmichnikov'
     repo = 'sports-schedules'
     
-    # Generate SQL query from natural language
-    print(f"Natural language query: {args.query}")
-    print("Generating SQL query...")
-    sql_query = generate_sql_query(args.query, anthropic_client)
-    
-    # Execute the SQL query
-    query_results = execute_sql_query(sql_query, owner, repo)
-    
-    if query_results is None:
-        sys.exit(1)
-    
-    # Generate and display summary
-    print("\n" + "=" * 60)
-    print("SUMMARY")
-    print("=" * 60)
-    print("Generating summary...")
-    
-    summary = generate_summary(query_results, args.query, anthropic_client)
-    print(summary)
+    if args.agent:
+        # Use agentic approach
+        agent_loop(args.query, owner, repo, anthropic_client)
+    else:
+        # Use original approach
+        print(f"Natural language query: {args.query}")
+        print("Generating SQL query...")
+        sql_query = generate_sql_query(args.query, anthropic_client)
+        
+        # Execute the SQL query
+        query_results = execute_sql_query(sql_query, owner, repo)
+        
+        if query_results is None:
+            sys.exit(1)
+        
+        # Generate and display summary
+        print("\n" + "=" * 60)
+        print("SUMMARY")
+        print("=" * 60)
+        print("Generating summary...")
+        
+        summary = generate_summary(query_results, args.query, anthropic_client)
+        print(summary)
 
 if __name__ == "__main__":
     main()
