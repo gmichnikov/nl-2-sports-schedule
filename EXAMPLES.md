@@ -50,8 +50,6 @@ ORDER BY `date`, `time` ASC
 ✅ Tool answer_question completed successfully
 💡 Answer:
 
-```
-
 Yes, you can absolutely go on a baseball road trip to see at least 3 games in the Midwest over the next few days!
 
 Based on the data, here are your best options:
@@ -83,10 +81,10 @@ Key Considerations
 
 Recommendation: Go with Option 1 (Missouri route) for the most manageable driving and guaranteed 3 games in 3 days!
 
+✅ Task completed!
 ```
 
-✅ Task completed!
-
+```
 ============================================================
 📊 FINAL SUMMARY
 ============================================================
