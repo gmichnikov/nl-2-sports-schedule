@@ -17,6 +17,12 @@ python3 script.py "Show me games in New York this week"
 python3 script.py "What games are happening today?"
 ```
 
+## Examples
+
+For complex queries that require planning or analysis, use the `--agent` flag
+
+See [EXAMPLES.md](EXAMPLES.md) for a detailed example.
+
 ## Output
 
 The script generates SQL, executes it against the DoltHub database, and provides both raw results and a clean summary of games in the format:

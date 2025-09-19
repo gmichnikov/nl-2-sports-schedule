@@ -10,7 +10,7 @@ python3 script.py "Can I go on a baseball road trip to see at least 3 games in a
 
 ### Output
 
-```
+````
 🤖 Agent starting with query: Can I go on a baseball road trip to see at least 3 games in a few days in the midwest usa in the next week or so
 ============================================================
 
@@ -33,12 +33,14 @@ python3 script.py "Can I go on a baseball road trip to see at least 3 games in a
 💭 Decision: I need to query the database to find baseball games in Midwest USA teams...
 🔧 Executing tool: execute_sql
 🔍 Generated SQL:
+```sql
 SELECT league, `date`, day, `time`, home_team, road_team, location, home_city, home_state
 FROM `combined-schedule`
 WHERE LOWER(sport) = LOWER('baseball')
 AND LOWER(home_state) IN (LOWER('IL'), LOWER('IN'), LOWER('IA'), LOWER('KS'), LOWER('MI'), LOWER('MN'), LOWER('MO'), LOWER('NE'), LOWER('ND'), LOWER('OH'), LOWER('SD'), LOWER('WI'))
 AND `date` >= '2025-09-19' AND `date` <= '2025-09-30'
 ORDER BY `date`, `time` ASC
+````
 
 ✅ Tool execute_sql completed successfully
 📊 Query returned 36 rows
@@ -47,36 +49,40 @@ ORDER BY `date`, `time` ASC
 💭 Decision: I have executed SQL queries and have 36 rows of baseball schedule data. Now I need to analyze this data...
 🔧 Executing tool: answer_question
 ✅ Tool answer_question completed successfully
-💡 Answer: **Yes, you can absolutely go on a baseball road trip to see at least 3 games in the Midwest over the next few days!**
+💡 Answer:
+
+```
+Yes, you can absolutely go on a baseball road trip to see at least 3 games in the Midwest over the next few days!
 
 Based on the data, here are your best options:
 
-## **Weekend Road Trip Options (Sept 19-21)**
+Weekend Road Trip Options (Sept 19-21)
 
-**Option 1: Missouri Double-Header**
-- **Friday 9/19**: St. Louis Cardinals vs Milwaukee Brewers (St. Louis)
-- **Saturday 9/20**: Kansas City Royals vs Toronto Blue Jays (Kansas City)
-- **Sunday 9/21**: Kansas City Royals vs Toronto Blue Jays (Kansas City)
-- _Drive time: St. Louis to Kansas City is about 4 hours_
+Option 1: Missouri Double-Header
+• Friday 9/19: St. Louis Cardinals vs Milwaukee Brewers (St. Louis)
+• Saturday 9/20: Kansas City Royals vs Toronto Blue Jays (Kansas City)
+• Sunday 9/21: Kansas City Royals vs Toronto Blue Jays (Kansas City)
+• Drive time: St. Louis to Kansas City is about 4 hours
 
-**Option 2: Great Lakes Circuit**
-- **Friday 9/19**: Detroit Tigers vs Atlanta Braves (Detroit)
-- **Saturday 9/20**: Chicago White Sox vs San Diego Padres (Chicago)
-- **Sunday 9/21**: Minnesota Twins vs Cleveland Guardians (Minneapolis)
-- _Drive times: Detroit to Chicago (4.5 hrs), Chicago to Minneapolis (6.5 hrs)_
+Option 2: Great Lakes Circuit
+• Friday 9/19: Detroit Tigers vs Atlanta Braves (Detroit)
+• Saturday 9/20: Chicago White Sox vs San Diego Padres (Chicago)
+• Sunday 9/21: Minnesota Twins vs Cleveland Guardians (Minneapolis)
+• Drive times: Detroit to Chicago (4.5 hrs), Chicago to Minneapolis (6.5 hrs)
 
-**Option 3: Ohio Valley Route**
-- **Friday 9/19**: Cincinnati Reds vs Chicago Cubs (Cincinnati)
-- **Saturday 9/20**: Detroit Tigers vs Atlanta Braves (Detroit)
-- **Sunday 9/21**: Chicago White Sox vs San Diego Padres (Chicago)
-- _Drive times: Cincinnati to Detroit (4 hrs), Detroit to Chicago (4.5 hrs)_
+Option 3: Ohio Valley Route
+• Friday 9/19: Cincinnati Reds vs Chicago Cubs (Cincinnati)
+• Saturday 9/20: Detroit Tigers vs Atlanta Braves (Detroit)
+• Sunday 9/21: Chicago White Sox vs San Diego Padres (Chicago)
+• Drive times: Cincinnati to Detroit (4 hrs), Detroit to Chicago (4.5 hrs)
 
-## **Key Considerations**
-- All games show "TBD" for specific times, so check official team schedules
-- Consider starting with the Friday games since you're already into the weekend
-- The Missouri route offers the shortest driving distances between cities
+Key Considerations
+• All games show "TBD" for specific times, so check official team schedules
+• Consider starting with the Friday games since you're already into the weekend
+• The Missouri route offers the shortest driving distances between cities
 
-**Recommendation**: Go with Option 1 (Missouri route) for the most manageable driving and guaranteed 3 games in 3 days!
+Recommendation: Go with Option 1 (Missouri route) for the most manageable driving and guaranteed 3 games in 3 days!
+```
 
 ✅ Task completed!
 
@@ -119,4 +125,7 @@ Based on the data, here are your best options:
 • Sunday 2025-09-28 St. Louis Cardinals @ Chicago Cubs
 • Sunday 2025-09-28 Texas Rangers @ Cleveland Guardians
 • Sunday 2025-09-28 Cincinnati Reds @ Milwaukee Brewers
+
+```
+
 ```
