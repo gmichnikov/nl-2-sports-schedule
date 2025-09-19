@@ -10,7 +10,7 @@ python3 script.py "Can I go on a baseball road trip to see at least 3 games in a
 
 ### Output
 
-````
+```
 🤖 Agent starting with query: Can I go on a baseball road trip to see at least 3 games in a few days in the midwest usa in the next week or so
 ============================================================
 
@@ -33,14 +33,13 @@ python3 script.py "Can I go on a baseball road trip to see at least 3 games in a
 💭 Decision: I need to query the database to find baseball games in Midwest USA teams...
 🔧 Executing tool: execute_sql
 🔍 Generated SQL:
-```sql
+
 SELECT league, `date`, day, `time`, home_team, road_team, location, home_city, home_state
 FROM `combined-schedule`
 WHERE LOWER(sport) = LOWER('baseball')
 AND LOWER(home_state) IN (LOWER('IL'), LOWER('IN'), LOWER('IA'), LOWER('KS'), LOWER('MI'), LOWER('MN'), LOWER('MO'), LOWER('NE'), LOWER('ND'), LOWER('OH'), LOWER('SD'), LOWER('WI'))
 AND `date` >= '2025-09-19' AND `date` <= '2025-09-30'
 ORDER BY `date`, `time` ASC
-````
 
 ✅ Tool execute_sql completed successfully
 📊 Query returned 36 rows
@@ -52,6 +51,7 @@ ORDER BY `date`, `time` ASC
 💡 Answer:
 
 ```
+
 Yes, you can absolutely go on a baseball road trip to see at least 3 games in the Midwest over the next few days!
 
 Based on the data, here are your best options:
@@ -82,6 +82,7 @@ Key Considerations
 • The Missouri route offers the shortest driving distances between cities
 
 Recommendation: Go with Option 1 (Missouri route) for the most manageable driving and guaranteed 3 games in 3 days!
+
 ```
 
 ✅ Task completed!
@@ -125,7 +126,4 @@ Recommendation: Go with Option 1 (Missouri route) for the most manageable drivin
 • Sunday 2025-09-28 St. Louis Cardinals @ Chicago Cubs
 • Sunday 2025-09-28 Texas Rangers @ Cleveland Guardians
 • Sunday 2025-09-28 Cincinnati Reds @ Milwaukee Brewers
-
-```
-
 ```
