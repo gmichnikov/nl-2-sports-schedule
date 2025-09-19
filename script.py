@@ -70,7 +70,7 @@ Generate a SQL query that answers the user's question. Use absolute dates in YYY
 
     try:
         response = anthropic_client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-20250514",  # Better for complex SQL generation
             max_tokens=1000,
             messages=[{"role": "user", "content": prompt}]
         )
@@ -125,7 +125,7 @@ Extract the day, date, road_team, and home_team from each row. Only return the b
 
     try:
         response = anthropic_client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-3-5-haiku-latest",
             max_tokens=2000,
             messages=[{"role": "user", "content": prompt}]
         )
@@ -164,7 +164,7 @@ Respond with a JSON object like:
 
     try:
         response = anthropic_client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-3-5-haiku-latest",
             max_tokens=500,
             messages=[{"role": "user", "content": prompt}]
         )
@@ -230,7 +230,7 @@ Extract the day, date, road_team, and home_team from each row. Only return the b
 
     try:
         response = anthropic_client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-3-5-haiku-latest",
             max_tokens=2000,
             messages=[{"role": "user", "content": prompt}]
         )
@@ -255,7 +255,7 @@ Provide a brief comparison highlighting key differences or similarities."""
 
     try:
         response = anthropic_client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-3-5-haiku-latest",
             max_tokens=500,
             messages=[{"role": "user", "content": prompt}]
         )
@@ -266,12 +266,65 @@ Provide a brief comparison highlighting key differences or similarities."""
     except Exception as e:
         return {"tool": "compare_data", "error": str(e)}
 
+def answer_question_tool(user_question, data, anthropic_client):
+    """Tool: Analyze data and provide a direct answer to the user's question."""
+    
+    # Get current date in Eastern Time
+    current_date = get_current_eastern_date()
+    
+    # Format the data for analysis
+    if not data.get('rows'):
+        data_summary = "No data available"
+    else:
+        rows = data.get('rows', [])
+        columns = data.get('columns', [])
+        data_summary = f"Found {len(rows)} rows with columns: {', '.join(columns)}\n\n"
+        
+        # Include sample data
+        for i, row in enumerate(rows[:10], 1):  # First 10 rows
+            data_summary += f"Row {i}: {row}\n"
+        if len(rows) > 10:
+            data_summary += f"... and {len(rows) - 10} more rows\n"
+    
+    prompt = f"""You are an expert data analyst. Based on the data provided, give a direct, helpful answer to the user's question.
+
+User's question: {user_question}
+
+Current date (Eastern Time): {current_date}
+
+Available data:
+{data_summary}
+
+Instructions:
+1. Analyze the data in relation to the user's question
+2. Use the current date to understand temporal context (e.g., "next week", "today", etc.)
+3. Provide a direct answer (yes/no, specific numbers, recommendations, etc.)
+4. If the data doesn't fully answer the question, explain what's missing
+5. Be specific and actionable
+6. If it's a complex question, break it down and provide structured recommendations
+
+Answer the user's question directly and helpfully."""
+
+    try:
+        response = anthropic_client.messages.create(
+            model="claude-sonnet-4-20250514",  # Better for complex analysis
+            max_tokens=1000,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        answer = response.content[0].text.strip()
+        return {"tool": "answer_question", "result": answer}
+        
+    except Exception as e:
+        return {"tool": "answer_question", "error": str(e)}
+
 # Tool registry
 AVAILABLE_TOOLS = {
     "analyze_question": analyze_question_tool,
     "execute_sql": execute_sql_tool,
     "summarize_data": summarize_data_tool,
-    "compare_data": compare_data_tool
+    "compare_data": compare_data_tool,
+    "answer_question": answer_question_tool
 }
 
 def agent_think(user_query, context, anthropic_client):
@@ -281,6 +334,18 @@ def agent_think(user_query, context, anthropic_client):
     context_summary = f"Step {context.get('step', 0)}: "
     if context.get('results'):
         context_summary += f"Executed {len(context['results'])} tools so far. "
+        
+        # Check if we already have SQL data
+        sql_results = [r for r in context['results'] if r['tool'] == 'execute_sql' and 'rows' in r]
+        if sql_results:
+            total_rows = sum(r.get('row_count', 0) for r in sql_results)
+            context_summary += f"Already have {total_rows} rows of data from {len(sql_results)} SQL queries. "
+        
+        # Check if we already have summaries
+        summary_results = [r for r in context['results'] if r['tool'] == 'summarize_data']
+        if summary_results:
+            context_summary += f"Already generated {len(summary_results)} summaries. "
+        
         recent_results = context['results'][-2:]  # Last 2 results
         for result in recent_results:
             if 'error' in result:
@@ -297,6 +362,7 @@ Available tools:
 - execute_sql: Run SQL queries against the database
 - summarize_data: Create bullet point summaries of data
 - compare_data: Compare two datasets
+- answer_question: Analyze data and provide a direct answer to the user's question
 """
     
     prompt = f"""You are an AI agent that helps users query sports schedule data. 
@@ -328,7 +394,7 @@ If the task seems complete, respond with:
 
     try:
         response = anthropic_client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-20250514",  # Better for complex reasoning
             max_tokens=500,
             messages=[{"role": "user", "content": prompt}]
         )
@@ -422,6 +488,18 @@ def execute_tool_decision(decision, context, owner, repo, anthropic_client):
             data2 = params.get("data2", {})
             comparison_type = params.get("comparison_type", "general")
             return tool_func(data1, data2, comparison_type, anthropic_client)
+        elif tool_name == "answer_question":
+            # Get the most recent SQL result if no data provided
+            if "data" not in params:
+                sql_results = [r for r in context["results"] if r["tool"] == "execute_sql" and "rows" in r]
+                if sql_results:
+                    data = sql_results[-1]  # Use most recent SQL result
+                else:
+                    data = {}
+            else:
+                data = params.get("data", {})
+            user_question = context.get("original_query", "")
+            return tool_func(user_question, data, anthropic_client)
         else:
             return {"tool": tool_name, "error": f"No handler for tool: {tool_name}"}
             
@@ -489,6 +567,8 @@ def agent_loop(user_query, owner, repo, anthropic_client):
                 print(f"📝 Summary: {result.get('result', 'No summary provided')}")
             elif result["tool"] == "compare_data":
                 print(f"⚖️ Comparison: {result.get('result', 'No comparison provided')}")
+            elif result["tool"] == "answer_question":
+                print(f"💡 Answer: {result.get('result', 'No answer provided')}")
             
             # Cache data for potential reuse
             if result["tool"] == "execute_sql" and "rows" in result:
